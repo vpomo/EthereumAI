@@ -1,4 +1,4 @@
-pragma solidity ^0.4.19;
+pragma solidity ^0.4.18;
 
 library SafeMath {
     function mul(uint256 a, uint256 b) internal pure returns (uint256) {
@@ -191,21 +191,81 @@ contract StandardToken is ERC20, BasicToken {
 
 contract EthereumAI is StandardToken {
 
-    string public constant name = "EthMerchant";
-    string public constant symbol = "ETMC";
+    string public constant name = "Ethereum AI";
+    string public constant symbol = "ETHAI";
     uint8 public constant decimals = 18;
-    uint256 public constant INITIAL_SUPPLY = 925670 * 10**3 * (10**uint256(decimals));
+    uint256 public constant INITIAL_SUPPLY = 1 * 10**9 * (10**uint256(decimals));
+    uint256 public fundForSale = 1 * 10**9 * (10 ** uint256(decimals));
+    uint256 public weiRaised;
 
     address public owner;
 
     event OwnerChanged(address indexed previousOwner, address indexed newOwner);
+    event TokenPurchase(address indexed beneficiary, uint256 value, uint256 amount);
+    event TokenLimitReached(uint256 tokenRaised, uint256 purchasedToken);
 
-    function EthMerchant(address _owner) public {
+    function EthereumAI(address _owner) public {
         totalSupply = INITIAL_SUPPLY;
         owner = _owner;
         //owner = msg.sender; // for testing
         balances[owner] = INITIAL_SUPPLY;
         transfersEnabled = true;
+    }
+
+    // fallback function can be used to buy tokens
+    function() payable public {
+        buyTokens(msg.sender);
+    }
+
+    function buyTokens(address _investor) public payable returns (uint256){
+        require(_investor != address(0));
+        uint256 weiAmount = msg.value;
+        uint256 tokens = validPurchaseTokens(weiAmount);
+        if (tokens == 0) {revert();}
+        weiRaised = weiRaised.add(weiAmount);
+        fundForSale = fundForSale.sub(tokens);
+        tokenAllocated = tokenAllocated.add(tokens);
+        mint(_investor, tokens, owner);
+
+        TokenPurchase(_investor, weiAmount, tokens);
+        wallet.transfer(weiAmount);
+        return tokens;
+    }
+
+    function validPurchaseTokens(uint256 _weiAmount) public inState(State.Active) returns (uint256) {
+        uint256 addTokens = getTotalAmountOfTokens(_weiAmount);
+        if (tokenAllocated.add(addTokens) > fundForSale) {
+            TokenLimitReached(tokenAllocated, addTokens);
+            return 0;
+        }
+        return addTokens;
+    }
+
+    function getTotalAmountOfTokens(uint256 _weiAmount) internal view returns (uint256) {
+        uint256 currentDate = now;
+        //currentDate = 1526342400; //for test's (Tue, 15 May 2018 00:00:00 GMT)
+        uint256 currentPeriod = getPeriod(currentDate);
+        uint256 amountOfTokens = 0;
+        if(currentPeriod < 6){
+            amountOfTokens = _weiAmount.mul(priceToken).mul(discount[currentPeriod] + 100).div(100);
+        }
+        if(currentPeriod == 0 && _weiAmount < weiMinSalePreIco){
+            amountOfTokens = 0;
+        }
+        if(0 < currentPeriod && currentPeriod < 6 && _weiAmount < weiMinSaleIco){
+            amountOfTokens = 0;
+        }
+        return amountOfTokens;
+    }
+
+    function mint(address _to, uint256 _amount, address _owner) internal returns (bool) {
+        require(_to != address(0));
+        require(_amount <= balances[_owner]);
+
+        balances[_to] = balances[_to].add(_amount);
+        balances[_owner] = balances[_owner].sub(_amount);
+        Transfer(_owner, _to, _amount);
+        return true;
     }
 
     modifier onlyOwner() {
