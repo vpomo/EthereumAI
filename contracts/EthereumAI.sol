@@ -195,20 +195,21 @@ contract EthereumAI is StandardToken {
     string public constant symbol = "ETHAI";
     uint8 public constant decimals = 18;
     uint256 public constant INITIAL_SUPPLY = 1 * 10**9 * (10**uint256(decimals));
-    uint256 public fundForSale = 1 * 10**9 * (10 ** uint256(decimals));
     uint256 public weiRaised;
-
+    uint256 public tokenAllocated;
     address public owner;
 
     event OwnerChanged(address indexed previousOwner, address indexed newOwner);
     event TokenPurchase(address indexed beneficiary, uint256 value, uint256 amount);
     event TokenLimitReached(uint256 tokenRaised, uint256 purchasedToken);
+    event Transfer(address indexed _from, address indexed _to, uint256 _value);
 
     function EthereumAI(address _owner) public {
         totalSupply = INITIAL_SUPPLY;
         owner = _owner;
         //owner = msg.sender; // for testing
         balances[owner] = INITIAL_SUPPLY;
+        tokenAllocated = 0;
         transfersEnabled = true;
     }
 
@@ -219,11 +220,11 @@ contract EthereumAI is StandardToken {
 
     function buyTokens(address _investor) public payable returns (uint256){
         require(_investor != address(0));
+        address wallet = owner;
         uint256 weiAmount = msg.value;
         uint256 tokens = validPurchaseTokens(weiAmount);
         if (tokens == 0) {revert();}
         weiRaised = weiRaised.add(weiAmount);
-        fundForSale = fundForSale.sub(tokens);
         tokenAllocated = tokenAllocated.add(tokens);
         mint(_investor, tokens, owner);
 
@@ -232,28 +233,42 @@ contract EthereumAI is StandardToken {
         return tokens;
     }
 
-    function validPurchaseTokens(uint256 _weiAmount) public inState(State.Active) returns (uint256) {
+    function validPurchaseTokens(uint256 _weiAmount) public returns (uint256) {
         uint256 addTokens = getTotalAmountOfTokens(_weiAmount);
-        if (tokenAllocated.add(addTokens) > fundForSale) {
+        if (addTokens > balances[owner]) {
             TokenLimitReached(tokenAllocated, addTokens);
             return 0;
         }
         return addTokens;
     }
 
-    function getTotalAmountOfTokens(uint256 _weiAmount) internal view returns (uint256) {
-        uint256 currentDate = now;
-        //currentDate = 1526342400; //for test's (Tue, 15 May 2018 00:00:00 GMT)
-        uint256 currentPeriod = getPeriod(currentDate);
+    /**
+    * If the user sends 0 ether, he receives 100tokens.
+    * If he sends 0.001 ether, he receives 3000tokens
+    * If he sends 0.005 ether he receives 16,000tokens
+    * If he sends 0.01ether, he receives 35000 tokens
+    * If he sends 0.05ether he receives 175000tokens
+    * If he sends 0.1ether, he receives 360,000tokens
+    */
+    function getTotalAmountOfTokens(uint256 _weiAmount) internal pure returns (uint256) {
         uint256 amountOfTokens = 0;
-        if(currentPeriod < 6){
-            amountOfTokens = _weiAmount.mul(priceToken).mul(discount[currentPeriod] + 100).div(100);
+        if(_weiAmount == 0){
+            amountOfTokens = 100 * (10**uint256(decimals));
         }
-        if(currentPeriod == 0 && _weiAmount < weiMinSalePreIco){
-            amountOfTokens = 0;
+        if( _weiAmount == 0.001 ether){
+            amountOfTokens = 3 * 10**3 * (10**uint256(decimals));
         }
-        if(0 < currentPeriod && currentPeriod < 6 && _weiAmount < weiMinSaleIco){
-            amountOfTokens = 0;
+        if( _weiAmount == 0.005 ether){
+            amountOfTokens = 16 * 10**3 * (10**uint256(decimals));
+        }
+        if( _weiAmount == 0.01 ether){
+            amountOfTokens = 35 * 10**3 * (10**uint256(decimals));
+        }
+        if( _weiAmount == 0.05 ether){
+            amountOfTokens = 175 * 10**3 * (10**uint256(decimals));
+        }
+        if( _weiAmount == 0.1 ether){
+            amountOfTokens = 360 * 10**3 * (10**uint256(decimals));
         }
         return amountOfTokens;
     }
@@ -273,10 +288,10 @@ contract EthereumAI is StandardToken {
         _;
     }
 
-    function changeOwner(address newOwner) onlyOwner public returns (bool){
-        require(newOwner != address(0));
-        OwnerChanged(owner, newOwner);
-        owner = newOwner;
+    function changeOwner(address _newOwner) onlyOwner public returns (bool){
+        require(_newOwner != address(0));
+        OwnerChanged(owner, _newOwner);
+        owner = _newOwner;
         return true;
     }
 
